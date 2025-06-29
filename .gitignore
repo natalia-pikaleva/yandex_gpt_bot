@@ -109,7 +109,6 @@ sentence_transformers/
 
 # Local configuration files
 .env
-.env.*
 *.env
 *.local
 config.yaml
