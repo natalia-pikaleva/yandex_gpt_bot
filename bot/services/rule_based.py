@@ -5,7 +5,8 @@ from bot.answers_dict import patterns_responses
 logger = logging.getLogger(__name__)
 
 default_response = (
-    "Я пока не понимаю этот запрос. Чтобы задать вопрос AI, нажмите кнопку 'Задать вопрос' ниже."
+    "Я вас понял, но моя задача — автоматический анализ и генерация отчётов по документации.\n"
+    "Загрузите файл через /upload, потом используйте /start_analysis. Для помощи введите /help."
 )
 
 

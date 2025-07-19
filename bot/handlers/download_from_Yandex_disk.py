@@ -7,10 +7,9 @@ import logging
 from sqlalchemy.ext.asyncio import AsyncSession
 from external_services.yandex_disk import download_file
 from bot.states import DownloadStates
-from bot.services.other_helpers import send_yandex_oauth, process_and_save_file
+from bot.services.other_helpers import process_and_save_file
 from database.db_services import get_yandex_token
 from config import DOWNLOADS_DIR, YANDEX_CLIENT_ID, REDIRECT_URI
-from bot.keyboards import main_keyboard
 
 router = Router()
 
@@ -47,8 +46,8 @@ async def download_start(call: CallbackQuery, state: FSMContext, session: AsyncS
     if token and token.strip():
         logger.info('Токен существует, ждем ссылку на файл')
         await call.message.answer(
-            "Отправьте ссылку на файл на вашем Яндекс.Диске.",
-            reply_markup=main_keyboard
+            "Отправьте публичную ссылку на ваш файл в Яндекс.Диске (через \"Поделиться\") "
+            "или введите путь к файлу в формате /folder/file.pdf"
         )
         await state.set_state(DownloadStates.waiting_for_path)
     else:
@@ -62,7 +61,6 @@ async def download_start(call: CallbackQuery, state: FSMContext, session: AsyncS
 
         await call.message.answer(
             text,
-            reply_markup=main_keyboard,
             parse_mode="HTML"
         )
         await state.set_state(DownloadStates.waiting_for_oauth)
@@ -91,8 +89,8 @@ async def cmd_download_start(message: Message, state: FSMContext, session: Async
         logger.info('Токен существует, ждем ссылку на файл')
 
         await message.answer(
-            "Отправьте ссылку на файл на вашем Яндекс.Диске.",
-            reply_markup=main_keyboard
+            "Отправьте публичную ссылку на ваш файл в Яндекс.Диске (через \"Поделиться\") "
+            "или введите путь к файлу в формате /folder/file.pdf."
         )
         await state.set_state(DownloadStates.waiting_for_path)
     else:
@@ -104,7 +102,7 @@ async def cmd_download_start(message: Message, state: FSMContext, session: Async
             f"{oauth_url}\n\n"
             "После успешной авторизации возвращайтесь в бота."
         )
-        await message.answer(text, reply_markup=main_keyboard)
+        await message.answer(text)
         await state.set_state(DownloadStates.waiting_for_oauth)
 
 
@@ -184,23 +182,23 @@ async def send_file_callback(callback: CallbackQuery, state: FSMContext, session
     await callback.answer()
 
     os.makedirs(DOWNLOADS_DIR, exist_ok=True)
-    local_file = os.path.join(DOWNLOADS_DIR, path.split("/")[-1])
 
-    # Скачиваем файл с Яндекс.Диска
-    success = await download_file(path, local_file, token)
-    if not success:
-        await callback.message.answer("Не удалось скачать файл. Проверьте путь и попробуйте снова.")
+    # Качаем файл, получаем путь к локальному файлу (имя с расширением!)
+    local_file_path = await download_file(path, DOWNLOADS_DIR, token)
+    if not local_file_path:
+        await callback.message.answer("Не удалось скачать файл. Проверьте путь или ссылку и попробуйте снова.")
         await state.clear()
         return
 
-    user_id = callback.from_user.id
-    filename = os.path.basename(local_file)
+    filename = os.path.basename(local_file_path)
+
     await process_and_save_file(
         user_id=user_id,
-        filename=os.path.basename(local_file),
-        local_file_path=local_file,
-        remote_path=path,  # путь на Яндекс.Диске пользователя
+        filename=filename,
+        local_file_path=local_file_path,
+        remote_path=path,  # путь на Яндекс.Диске или публичная ссылка
         session=session,
         message_send_func=callback.message.answer,
-        file_id=f"yadisk_{user_id}_{os.path.basename(local_file)}"
+        file_id=f"yadisk_{user_id}_{filename}"
     )
+

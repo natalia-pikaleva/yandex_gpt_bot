@@ -37,10 +37,10 @@ async def register_routers(dp: Dispatcher):
     dp.include_router(handlers.start.router)
     dp.include_router(handlers.download_from_Yandex_disk.router)
     dp.include_router(handlers.download_file.router)
-    dp.include_router(handlers.reset.router)
-    dp.include_router(handlers.search.router)
+    dp.include_router(handlers.start_analysis.router)
     dp.include_router(handlers.upload.router)
-    dp.include_router(handlers.wiki.router)
+    dp.include_router(handlers.status.router)
+    dp.include_router(handlers.reports.router)
     dp.include_router(handlers.message.router)
 
 
@@ -55,11 +55,11 @@ async def set_commands(bot: Bot):
     """
     commands = [
         BotCommand(command="start", description="Запустить бота"),
-        BotCommand(command="upload", description="Отправить файл для загрузки"),
+        BotCommand(command="upload", description="Загрузить файл документации"),
         BotCommand(command="download_from_yandex_disk", description="Загрузить файл с Яндекс.Диска"),
-        BotCommand(command="search_with_ai", description="Поиск с AI"),
-        BotCommand(command="search_wiki", description="Поиск в Википедии"),
-        BotCommand(command="reset", description="Сбросить текущий контекст"),
+        BotCommand(command="start_analysis", description="Начать анализ документов"),
+        BotCommand(command="status", description="Узнать статус анализа"),
+        BotCommand(command="reports", description="Мой архив отчетов"),
         BotCommand(command="help", description="Помощь и инструкции"),
     ]
     await bot.set_my_commands(commands)

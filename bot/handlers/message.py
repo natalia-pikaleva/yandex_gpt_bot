@@ -1,7 +1,6 @@
 from aiogram import Router
 from aiogram.types import Message
 from aiogram.types import ContentType
-from bot.keyboards import main_keyboard
 from bot.services.rule_based import get_rule_based_response
 import logging
 
@@ -22,10 +21,10 @@ async def handle_user_message(message: Message):
     if message.content_type != ContentType.TEXT:
         await message.answer(
             "Пожалуйста, отправляйте текстовые сообщения или документы "
-            "с расширениями: .txt, .pdf, .docx, .rtf, .epub, .fb2"
+            "с расширениями: .txt, .pdf, .docx, .rtf, .xlsx"
         )
         return
 
     text = message.text.lower()
     response = await get_rule_based_response(text)
-    await message.answer(response, reply_markup=main_keyboard)
+    await message.answer(response)

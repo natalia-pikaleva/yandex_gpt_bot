@@ -20,5 +20,5 @@ async def main():
 if __name__ == "__main__":
     print("Start bot")
     asyncio.run(main())
-    # import nltk
-    # nltk.download('punkt')
+    import nltk
+    nltk.download('punkt')

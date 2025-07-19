@@ -83,7 +83,8 @@ async def yandex_oauth_callback(request: Request):
                 int(state),
                 "Авторизация завершена! Теперь введите путь к файлу на вашем Яндекс.Диске:"
             )
-        elif not user.yandex_token and user.yandex_token.strip():
+        token = user.yandex_token
+        if not token or not token.strip():
             user.yandex_token = access_token
             user.notification_sent = True
             await session.commit()
