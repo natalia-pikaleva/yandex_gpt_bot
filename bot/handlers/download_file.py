@@ -6,7 +6,6 @@ import logging
 
 from bot.bot_instance import bot
 from external_services.yandex_disk import upload_user_file
-from bot.keyboards import main_keyboard
 from config import ALLOWED_EXTENSIONS, MAX_FILE_SIZE_MB
 from bot.services.other_helpers import process_and_save_file
 
@@ -35,9 +34,8 @@ async def handle_document(
     if ext not in ALLOWED_EXTENSIONS:
         await message.answer(
             "❌ Извините, поддерживаются только текстовые файлы с расширениями: .txt, "
-            ".pdf, .docx, .rtf, .epub, .fb2.\n"
-            "Пожалуйста, загрузите файл в одном из этих форматов.",
-            reply_markup=main_keyboard
+            ".pdf, .docx, .rtf, .xlsx\n"
+            "Пожалуйста, загрузите файл в одном из этих форматов."
         )
         return
 
@@ -48,8 +46,7 @@ async def handle_document(
     if file_size_mb > MAX_FILE_SIZE_MB:
         await message.answer(
             f"⚠️ Ваш файл довольно большой ({file_size_mb:.2f} МБ). "
-            "Загрузка и обработка могут занять некоторое время, пожалуйста, подождите.",
-            reply_markup=main_keyboard
+            "Загрузка и обработка могут занять некоторое время, пожалуйста, подождите."
         )
 
     user_id = message.from_user.id

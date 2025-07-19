@@ -3,7 +3,6 @@ from aiogram.types import Message, CallbackQuery
 from aiogram.filters import Command
 import logging
 
-from bot.keyboards import main_keyboard
 
 router = Router()
 logger = logging.getLogger(__name__)
@@ -20,7 +19,7 @@ async def cmd_upload(message: Message):
         message (Message): Объект сообщения от пользователя, вызвавшего команду /upload.
     """
     text = "📤 Пожалуйста, отправьте файл (PDF, DOCX, TXT и др.) для загрузки и обработки."
-    await message.answer(text, reply_markup=main_keyboard)
+    await message.answer(text)
 
 
 @router.callback_query(F.data == "upload")
@@ -34,4 +33,4 @@ async def upload(call: CallbackQuery):
         message (Message): Объект сообщения от пользователя, вызвавшего команду /upload.
     """
     text = "📤 Пожалуйста, отправьте файл (PDF, DOCX, TXT и др.) для загрузки и обработки."
-    await call.message.answer(text, reply_markup=main_keyboard)
+    await call.message.answer(text)

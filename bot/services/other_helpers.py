@@ -6,7 +6,8 @@ import os
 import logging
 from types import SimpleNamespace
 
-from database.db_services import file_save, save_knowledge_entries
+from database.db_services import file_save, split_and_save_chunks
+
 from bot.services.text_processing import extract_text_from_file
 from config import ALLOWED_EXTENSIONS, MAX_FILE_SIZE_MB
 
@@ -58,7 +59,7 @@ async def process_and_save_file_from_disk(
         _, ext = os.path.splitext(filename.lower())
         if ext not in ALLOWED_EXTENSIONS:
             await message_send_func(
-                "❌ Поддерживаются только файлы: .txt, .pdf, .docx, .rtf, .epub, .fb2."
+                "❌ Поддерживаются только файлы: .txt, .pdf, .docx, .rtf, .xlsx"
             )
             return
 
@@ -72,17 +73,14 @@ async def process_and_save_file_from_disk(
 
         # Сохраняем информацию о файле в базе данных
         # Здесь file_id можно сгенерировать, например, через uuid или хеш
-        file_id_db = await file_save(user_id, filename, local_file_path, session)
-        if file_id_db is None:
+        user_file_obj = await file_save(user_id, filename, local_file_path, session)
+        if user_file_obj is None:
             raise RuntimeError("Ошибка при сохранении файла в базе данных")
 
         # Извлекаем текст
         text = extract_text_from_file(local_file_path)
         if not text or text == "Формат файла не поддерживается.":
             raise RuntimeError("Не удалось извлечь текст из файла")
-
-        # Сохраняем знания
-        await save_knowledge_entries(user_id, file_id_db, text, session)
 
         # Удаляем локальный файл
         try:
@@ -91,8 +89,7 @@ async def process_and_save_file_from_disk(
             logger.warning(f"Не удалось удалить локальный файл {local_file_path}: {e}")
 
         await message_send_func(
-            f"✅ Файл '{filename}' успешно загружен и проиндексирован.\n"
-            f"Теперь вы можете задавать вопросы по содержимому.",
+            f"✅ Файл '{filename}' готов для анализа системой"
         )
     except Exception as e:
         logger.error(f"Ошибка при обработке файла с Яндекс.Диска: {e}")
@@ -136,15 +133,13 @@ async def process_and_save_file(
         file_id (str, optional): Уникальный идентификатор файла (если нет — будет сгенерирован).
     """
     try:
-        # Проверяем расширение
         _, ext = os.path.splitext(filename.lower())
         if ext not in ALLOWED_EXTENSIONS:
             await message_send_func(
-                "❌ Поддерживаются только файлы: .txt, .pdf, .docx, .rtf, .epub, .fb2."
+                "❌ Поддерживаются только файлы: .txt, .pdf, .docx, .rtf, .xlsx."
             )
             return
 
-        # Проверяем размер файла
         file_size = os.path.getsize(local_file_path)
         file_size_mb = file_size / (1024 * 1024)
         if file_size_mb > MAX_FILE_SIZE_MB:
@@ -152,15 +147,13 @@ async def process_and_save_file(
                 f"⚠️ Файл большой ({file_size_mb:.2f} МБ). Обработка может занять время."
             )
 
-        # Создаем "документ" для file_save
         doc_obj = SimpleNamespace(
             file_id=file_id or f"file_{user_id}_{filename}",
             file_name=filename
         )
 
-        # Сохраняем информацию о файле в базе данных
-        file_id_db = await file_save(user_id, doc_obj, remote_path, session)
-        if file_id_db == 'already_exists':
+        user_file_obj = await file_save(user_id, doc_obj, remote_path, session)
+        if user_file_obj == 'already_exists':
             await message_send_func(
                 f"⚠️ Файл с именем '{filename}' уже был загружен ранее.\n"
                 f"Вы можете воспользоваться уже загруженным файлом."
@@ -170,7 +163,7 @@ async def process_and_save_file(
             except Exception as e:
                 logger.warning(f"Не удалось удалить локальный файл {local_file_path}: {e}")
             return
-        elif file_id_db is None:
+        elif user_file_obj is None:
             raise RuntimeError("Ошибка при сохранении файла в базе данных")
 
         # Извлекаем текст
@@ -178,23 +171,19 @@ async def process_and_save_file(
         if not text or text == "Формат файла не поддерживается.":
             raise RuntimeError("Не удалось извлечь текст из файла")
 
-        # Сохраняем знания
-        await save_knowledge_entries(user_id, file_id_db, text, session)
+        # Разбиваем и сохраняем чанки:
+        await split_and_save_chunks(user_file_obj, text, session)
 
-        # Удаляем локальный файл
         try:
             os.remove(local_file_path)
         except Exception as e:
             logger.warning(f"Не удалось удалить локальный файл {local_file_path}: {e}")
 
         await message_send_func(
-            f"✅ Файл '{filename}' успешно загружен и проиндексирован.\n"
-            f"Теперь вы можете задавать вопросы по содержимому.",
+            f"✅ Файл '{filename}' готов для анализа системой. После загрузки всех файлов нажмите Начать анализ документов"
         )
     except Exception as e:
         logger.error(f"Ошибка при обработке файла пользователя {user_id}: {e}")
-        # Откат: удаление файла из базы знаний и БД (если реализовано)
-        # Откат: удаление локального файла
         try:
             if os.path.exists(local_file_path):
                 os.remove(local_file_path)
@@ -204,3 +193,6 @@ async def process_and_save_file(
         await message_send_func(
             "❌ Произошла ошибка при обработке файла. Попробуйте повторить позже."
         )
+
+
+
