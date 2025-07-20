@@ -42,78 +42,78 @@ async def start_analysis(message: Message, session: AsyncSession):
         return
 
     await message.answer("Промт успешно загружен")
-    # files_in_progress = []
-    # files_done = []
-    # for user_file in user_files:
-    #     # Получаем все чанки файла (если уже обработаны - пропускаем)
-    #     chunks = await get_file_chunks(user_file.file_id, session=session)
-    #     if not chunks:
-    #         await message.answer(
-    #             f"Файл {user_file.title or user_file.file_id}: нет разбивки на блоки, обратитесь к администратору."
-    #         )
-    #         continue
-    #     if all(chunk.processed for chunk in chunks):
-    #         files_done.append(user_file.title or user_file.file_id)
-    #         continue
-    #
-    #     files_in_progress.append(user_file.title or user_file.file_id)
-    #     await message.answer(f"⏳ Анализирую файл: {user_file.title or user_file.file_id}...")
-    #
-    #     # 4. Поочередно анализируем каждый чанк, если он еще не обработан
-    #     for chunk in chunks:
-    #         if chunk.processed:
-    #             continue
-    #         messages = [
-    #             {"role": "system", "text": prompt_text},
-    #             {"role": "user", "text": chunk.content}
-    #         ]
-    #         try:
-    #             response = await yandex_gpt_request(
-    #                 messages=messages,
-    #                 model="yandexgpt-lite",
-    #                 temperature=0.1,
-    #                 max_tokens=1500,
-    #             )
-    #             ai_answer = response["result"]["alternatives"][0]["message"]["text"]
-    #         except Exception as ex:
-    #             await message.answer(
-    #                 f"❌ Ошибка анализа чанка файла {user_file.title or user_file.file_id}: {ex}"
-    #             )
-    #             continue
-    #
-    #         await save_chunk_ai_response(chunk.id, ai_answer, session=session)
-    #     await session.commit()
-    #
-    #     # 5. Итоговое резюмирование по всем ответам AI для чанков
-    #     # Собираем ответы по чанкам
-    #     ai_answers = [chunk.ai_response for chunk in chunks if chunk.ai_response]
-    #     if ai_answers:
-    #         summary_prompt = (
-    #                 prompt_text
-    #                 + "\nНиже приведены результаты частичного анализа разделов/частей документа. "
-    #                   "Сформулируй итоговый экспертный отчет по всем замечаниям:\n\n"
-    #                 + "\n---\n".join(ai_answers)
-    #         )
-    #         messages = [{"role": "system", "text": prompt_text},
-    #                     {"role": "user", "text": summary_prompt}]
-    #
-    #         try:
-    #             response = await yandex_gpt_request(
-    #                 messages=messages,
-    #                 model="yandexgpt-lite",
-    #                 temperature=0.1,
-    #                 max_tokens=2000,
-    #             )
-    #             final_summary = response["result"]["alternatives"][0]["message"]["text"]
-    #             # Сохраняем summary по файлу
-    #             await save_file_summary(user_file.file_id, final_summary, session=session)
-    #             await session.commit()
-    #             await message.answer(
-    #                 f"✅ Анализ завершён для файла: {user_file.title or user_file.file_id}.\n\n"
-    #                 f"Отчет:\n\n{final_summary[:3800]}{'...' if len(final_summary) > 3800 else ''}"
-    #             )
-    #         except Exception as ex:
-    #             await message.answer(f"❌ Ошибка создания общего отчета: {ex}")
-    #
-    #     if not files_in_progress:
-    #         await message.answer("Все ваши файлы уже были проанализированы.")
+    files_in_progress = []
+    files_done = []
+    for user_file in user_files:
+        # Получаем все чанки файла (если уже обработаны - пропускаем)
+        chunks = await get_file_chunks(user_file.file_id, session=session)
+        if not chunks:
+            await message.answer(
+                f"Файл {user_file.title or user_file.file_id}: нет разбивки на блоки, обратитесь к администратору."
+            )
+            continue
+        if all(chunk.processed for chunk in chunks):
+            files_done.append(user_file.title or user_file.file_id)
+            continue
+
+        files_in_progress.append(user_file.title or user_file.file_id)
+        await message.answer(f"⏳ Анализирую файл: {user_file.title or user_file.file_id}...")
+
+        # 4. Поочередно анализируем каждый чанк, если он еще не обработан
+        for chunk in chunks:
+            if chunk.processed:
+                continue
+            messages = [
+                {"role": "system", "text": prompt_text},
+                {"role": "user", "text": chunk.content}
+            ]
+            try:
+                response = await yandex_gpt_request(
+                    messages=messages,
+                    model="yandexgpt-lite",
+                    temperature=0.1,
+                    max_tokens=1500,
+                )
+                ai_answer = response["result"]["alternatives"][0]["message"]["text"]
+            except Exception as ex:
+                await message.answer(
+                    f"❌ Ошибка анализа чанка файла {user_file.title or user_file.file_id}: {ex}"
+                )
+                continue
+
+            await save_chunk_ai_response(chunk.id, ai_answer, session=session)
+        await session.commit()
+
+        # 5. Итоговое резюмирование по всем ответам AI для чанков
+        # Собираем ответы по чанкам
+        ai_answers = [chunk.ai_response for chunk in chunks if chunk.ai_response]
+        if ai_answers:
+            summary_prompt = (
+                    prompt_text
+                    + "\nНиже приведены результаты частичного анализа разделов/частей документа. "
+                      "Сформулируй итоговый экспертный отчет по всем замечаниям:\n\n"
+                    + "\n---\n".join(ai_answers)
+            )
+            messages = [{"role": "system", "text": prompt_text},
+                        {"role": "user", "text": summary_prompt}]
+
+            try:
+                response = await yandex_gpt_request(
+                    messages=messages,
+                    model="yandexgpt-lite",
+                    temperature=0.1,
+                    max_tokens=2000,
+                )
+                final_summary = response["result"]["alternatives"][0]["message"]["text"]
+                # Сохраняем summary по файлу
+                await save_file_summary(user_file.file_id, final_summary, session=session)
+                await session.commit()
+                await message.answer(
+                    f"✅ Анализ завершён для файла: {user_file.title or user_file.file_id}.\n\n"
+                    f"Отчет:\n\n{final_summary[:3800]}{'...' if len(final_summary) > 3800 else ''}"
+                )
+            except Exception as ex:
+                await message.answer(f"❌ Ошибка создания общего отчета: {ex}")
+
+        if not files_in_progress:
+            await message.answer("Все ваши файлы уже были проанализированы.")
