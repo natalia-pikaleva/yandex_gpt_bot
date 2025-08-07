@@ -5,9 +5,13 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from database.db_services import get_users_files, get_file_chunks, save_chunk_ai_response, save_file_summary
 from external_services.yandex_disk import download_prompt_from_yandex
 from external_services.ai_yandex_gpt import yandex_gpt_request
+from bot.services.other_helpers import summarize_in_steps
 import aiofiles
 from config import PROMPT_REMOTE_PATH, PROMPT_LOCAL_PATH
+import asyncio
+import logging
 
+logger = logging.getLogger(__name__)
 router = Router()
 
 
@@ -75,45 +79,30 @@ async def start_analysis(message: Message, session: AsyncSession):
                     max_tokens=1500,
                 )
                 ai_answer = response["result"]["alternatives"][0]["message"]["text"]
+                await save_chunk_ai_response(chunk.id, ai_answer, session=session)
             except Exception as ex:
+                logger.error(f"Ошибка анализа чанка файла {user_file.file_id}: {ex}")
                 await message.answer(
                     f"❌ Ошибка анализа чанка файла {user_file.title or user_file.file_id}: {ex}"
                 )
-                continue
-
-            await save_chunk_ai_response(chunk.id, ai_answer, session=session)
+            await asyncio.sleep(0.2)
         await session.commit()
 
         # 5. Итоговое резюмирование по всем ответам AI для чанков
         # Собираем ответы по чанкам
-        ai_answers = [chunk.ai_response for chunk in chunks if chunk.ai_response]
-        if ai_answers:
-            summary_prompt = (
-                    prompt_text
-                    + "\nНиже приведены результаты частичного анализа разделов/частей документа. "
-                      "Сформулируй итоговый экспертный отчет по всем замечаниям:\n\n"
-                    + "\n---\n".join(ai_answers)
-            )
-            messages = [{"role": "system", "text": prompt_text},
-                        {"role": "user", "text": summary_prompt}]
-
-            try:
-                response = await yandex_gpt_request(
-                    messages=messages,
-                    model="yandexgpt-lite",
-                    temperature=0.1,
-                    max_tokens=2000,
-                )
-                final_summary = response["result"]["alternatives"][0]["message"]["text"]
-                # Сохраняем summary по файлу
+        try:
+            ai_answers = [chunk.ai_response for chunk in chunks if chunk.ai_response]
+            if ai_answers:
+                final_summary = await summarize_in_steps(ai_answers, prompt_text, session)
                 await save_file_summary(user_file.file_id, final_summary, session=session)
                 await session.commit()
                 await message.answer(
                     f"✅ Анализ завершён для файла: {user_file.title or user_file.file_id}.\n\n"
                     f"Отчет:\n\n{final_summary[:3800]}{'...' if len(final_summary) > 3800 else ''}"
                 )
-            except Exception as ex:
-                await message.answer(f"❌ Ошибка создания общего отчета: {ex}")
 
-        if not files_in_progress:
-            await message.answer("Все ваши файлы уже были проанализированы.")
+        except Exception as ex:
+            await message.answer(f"❌ Ошибка создания общего отчета: {ex}")
+
+    if not files_in_progress:
+        await message.answer("Все ваши файлы уже были проанализированы.")
