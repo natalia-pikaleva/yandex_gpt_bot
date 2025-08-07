@@ -258,8 +258,9 @@ async def summarize_in_steps(ai_answers: list, prompt_text: str, session: AsyncS
     return final_summary
 
 
-async def summarize_recursive(ai_texts: list, prompt_text: str, max_group_size: int = 10,
-                              max_final_groups: int = 20, session: AsyncSession) -> str:
+async def summarize_recursive(ai_texts: list, prompt_text: str, session: AsyncSession,
+                              max_group_size: int = 10,
+                              max_final_groups: int = 20) -> str:
     """
     Многоступенчатое резюмирование
     ai_texts       — список текстов для резюмирования (ответы или промежуточные сводки)
