@@ -195,7 +195,9 @@ async def process_and_save_file(
             "❌ Произошла ошибка при обработке файла. Попробуйте повторить позже."
         )
 
+
 CHUNKS_PER_STEP = 10  # Кол-во чанков для одного промежуточного резюме
+
 
 async def summarize_in_steps(ai_answers: list, prompt_text: str, session: AsyncSession):
     summaries = []
@@ -205,9 +207,9 @@ async def summarize_in_steps(ai_answers: list, prompt_text: str, session: AsyncS
         group_text = "\n---\n".join(group)
 
         summary_prompt = (
-            prompt_text
-            + "\nПожалуйста, сделай краткое резюмирование следующих частей документа:\n\n"
-            + group_text
+                prompt_text
+                + "\nПожалуйста, сделай краткое резюмирование следующих частей документа:\n\n"
+                + group_text
         )
         messages = [
             {"role": "system", "text": prompt_text},
@@ -225,14 +227,14 @@ async def summarize_in_steps(ai_answers: list, prompt_text: str, session: AsyncS
             summaries.append(intermediate_summary)
         except Exception as ex:
             # Можно обработать ошибку, например, логировать и продолжать
-            summaries.append(f"Ошибка генерации резюме для группы chunk {i}-{i+CHUNKS_PER_STEP}: {ex}")
+            summaries.append(f"Ошибка генерации резюме для группы chunk {i}-{i + CHUNKS_PER_STEP}: {ex}")
 
     # Если резюме получилось более одного, то объединяем и резюмируем итогово
     if len(summaries) > 1:
         final_summary_prompt = (
-            prompt_text
-            + "\nПожалуйста, на основе ниже приведенных кратких резюме сделай общий итоговый экспертный отчет:\n\n"
-            + "\n---\n".join(summaries)
+                prompt_text
+                + "\nПожалуйста, на основе ниже приведенных кратких резюме сделай общий итоговый экспертный отчет:\n\n"
+                + "\n---\n".join(summaries)
         )
         messages = [
             {"role": "system", "text": prompt_text},
@@ -256,3 +258,78 @@ async def summarize_in_steps(ai_answers: list, prompt_text: str, session: AsyncS
     return final_summary
 
 
+async def summarize_recursive(ai_texts: list, prompt_text: str, max_group_size: int = 10,
+                              max_final_groups: int = 20, session: AsyncSession) -> str:
+    """
+    Многоступенчатое резюмирование
+    ai_texts       — список текстов для резюмирования (ответы или промежуточные сводки)
+    prompt_text    — системный промт, который даётся в system-сообщении
+    max_group_size — максимальное число текстов на одном промежуточном резюме
+    max_final_groups — максимальное допустимое количество групп для финального объединения
+
+    Возвращает итоговое сводное резюме.
+    """
+
+    # Если текстов мало или нет, просто объединяем и возвращаем
+    if not ai_texts:
+        return ""
+    if len(ai_texts) <= max_group_size:
+        # Формируем запрос на резюмирование одного уровня
+        combined_text = "\n---\n".join(ai_texts)
+        user_prompt = (
+                "Пожалуйста, сделай краткое резюмирование следующих частей документа:\n\n"
+                + combined_text
+        )
+        messages = [
+            {"role": "system", "text": prompt_text},
+            {"role": "user", "text": user_prompt},
+        ]
+        try:
+            response = await yandex_gpt_request(
+                messages=messages,
+                model="yandexgpt-lite",
+                temperature=0.1,
+                max_tokens=1500,
+            )
+            summary = response["result"]["alternatives"][0]["message"]["text"]
+            return summary
+        except Exception as ex:
+            # Логируем ошибку и возвращаем частичное резюме/пустой результат
+            logger.error(f"Ошибка при промежуточном резюмировании: {ex}")
+            return ""
+
+    # Разбиваем список текстов на группы max_group_size
+    grouped_summaries = []
+    for i in range(0, len(ai_texts), max_group_size):
+        group_texts = ai_texts[i:i + max_group_size]
+        summary = await summarize_recursive(group_texts, prompt_text, max_group_size, max_final_groups, session)
+        if summary:
+            grouped_summaries.append(summary)
+
+    # Если на этом уровне число групп не превышает max_final_groups, то объединяем их
+    if len(grouped_summaries) <= max_final_groups:
+        combined_text = "\n---\n".join(grouped_summaries)
+        user_prompt = (
+                "Пожалуйста, на основе ниже приведённых кратких резюме сделай общий итоговый экспертный отчёт:\n\n"
+                + combined_text
+        )
+        messages = [
+            {"role": "system", "text": prompt_text},
+            {"role": "user", "text": user_prompt},
+        ]
+        try:
+            response = await yandex_gpt_request(
+                messages=messages,
+                model="yandexgpt-lite",
+                temperature=0.1,
+                max_tokens=2000,
+            )
+            final_summary = response["result"]["alternatives"][0]["message"]["text"]
+            return final_summary
+        except Exception as ex:
+            logger.error(f"Ошибка при финальном резюмировании: {ex}")
+            # Возвращаем объединение всех промежуточных резюме без отправки на AI, если хотите
+            return combined_text
+    else:
+        # Если групп слишком много — повторяем резюмирование рекурсивно
+        return await summarize_recursive(grouped_summaries, prompt_text, max_group_size, max_final_groups, session)
