@@ -43,6 +43,15 @@ async def handle_document(
     file_size = message.document.file_size  # размер в байтах
     file_size_mb = file_size / (1024 * 1024)
 
+    if file_size_mb > 20:
+        await message.answer(
+            f"❌ Файл слишком большой ({file_size_mb:.2f} МБ). "
+            f"Максимально допустимый размер файла — 20 МБ из-за ограничений Telegram.\n"
+            "Пожалуйста, разбейте ваш документ на несколько файлов меньшего размера "
+            "и загрузите их по очереди."
+        )
+        return  # Прекращаем обработку большого файла
+
     if file_size_mb > MAX_FILE_SIZE_MB:
         await message.answer(
             f"⚠️ Ваш файл довольно большой ({file_size_mb:.2f} МБ). "
