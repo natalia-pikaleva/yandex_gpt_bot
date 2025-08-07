@@ -5,6 +5,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 import os
 import logging
 from types import SimpleNamespace
+from external_services.ai_yandex_gpt import yandex_gpt_request
 
 from database.db_services import file_save, split_and_save_chunks
 
@@ -194,5 +195,64 @@ async def process_and_save_file(
             "❌ Произошла ошибка при обработке файла. Попробуйте повторить позже."
         )
 
+CHUNKS_PER_STEP = 10  # Кол-во чанков для одного промежуточного резюме
+
+async def summarize_in_steps(ai_answers: list, prompt_text: str, session: AsyncSession):
+    summaries = []
+    # Разбиваем список ответов на группы по CHUNKS_PER_STEP
+    for i in range(0, len(ai_answers), CHUNKS_PER_STEP):
+        group = ai_answers[i:i + CHUNKS_PER_STEP]
+        group_text = "\n---\n".join(group)
+
+        summary_prompt = (
+            prompt_text
+            + "\nПожалуйста, сделай краткое резюмирование следующих частей документа:\n\n"
+            + group_text
+        )
+        messages = [
+            {"role": "system", "text": prompt_text},
+            {"role": "user", "text": summary_prompt},
+        ]
+
+        try:
+            response = await yandex_gpt_request(
+                messages=messages,
+                model="yandexgpt-lite",
+                temperature=0.1,
+                max_tokens=1500,  # Можно уменьшить, чтобы вместить результат
+            )
+            intermediate_summary = response["result"]["alternatives"][0]["message"]["text"]
+            summaries.append(intermediate_summary)
+        except Exception as ex:
+            # Можно обработать ошибку, например, логировать и продолжать
+            summaries.append(f"Ошибка генерации резюме для группы chunk {i}-{i+CHUNKS_PER_STEP}: {ex}")
+
+    # Если резюме получилось более одного, то объединяем и резюмируем итогово
+    if len(summaries) > 1:
+        final_summary_prompt = (
+            prompt_text
+            + "\nПожалуйста, на основе ниже приведенных кратких резюме сделай общий итоговый экспертный отчет:\n\n"
+            + "\n---\n".join(summaries)
+        )
+        messages = [
+            {"role": "system", "text": prompt_text},
+            {"role": "user", "text": final_summary_prompt},
+        ]
+
+        try:
+            response = await yandex_gpt_request(
+                messages=messages,
+                model="yandexgpt-lite",
+                temperature=0.1,
+                max_tokens=2000,
+            )
+            final_summary = response["result"]["alternatives"][0]["message"]["text"]
+        except Exception as ex:
+            final_summary = f"Ошибка итогового резюмирования: {ex}"
+    else:
+        # Если один промежуточный summary — это и есть финал
+        final_summary = summaries[0] if summaries else ""
+
+    return final_summary
 
 
